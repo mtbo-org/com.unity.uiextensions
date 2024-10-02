@@ -13,9 +13,9 @@ namespace UnityEngine.UI.Extensions
         public RectTransform[] transforms;
         private Vector3[] previousPositions;
         private Vector3 previousLrPos;
+        private Vector3 previousGlobalScale;
         private RectTransform rt;
         private UILineRenderer lr;
-
 
         private void Awake()
         {
@@ -23,8 +23,17 @@ namespace UnityEngine.UI.Extensions
             lr = GetComponent<UILineRenderer>();
         }
 
-        // Update is called once per frame
-        void Update()
+        private void OnEnable()
+        {
+            if (transforms == null || transforms.Length < 1)
+            {
+                return;
+            }
+
+            CalculateLinePoints();
+        }
+
+        private void Update()
         {
             if (lr.RelativeSize)
             {
@@ -43,6 +52,7 @@ namespace UnityEngine.UI.Extensions
             /*Performance check to only redraw when the child transforms move,
             or the world position of UILineRenderer moves */
             bool updateLine = lrWorldPos != previousLrPos;
+            updateLine = rt.lossyScale != previousGlobalScale;
 
             if (!updateLine && previousPositions != null && previousPositions.Length == transforms.Length)
             {
@@ -59,29 +69,16 @@ namespace UnityEngine.UI.Extensions
                     }
                 }
             }  
-            if (!updateLine) return;       
+            if (!updateLine) return;
 
 
             // Calculate delta from the local position
-            Vector2[] points = new Vector2[transforms.Length];
-            for (int i = 0; i < transforms.Length; i++)
-            {
-                if (transforms[i] == null)
-                {
-                    continue;
-                }
+            CalculateLinePoints();
 
-                var offsetPos = rt.InverseTransformPoint(transforms[i].position);
-                points[i] = new Vector2(offsetPos.x, offsetPos.y);
-            }
 
-            // And assign the converted points to the line renderer
-            lr.Points = points;
-            lr.RelativeSize = false;
-            lr.drivenExternally = true;
-
-            //save previous positions
+            //save previous states
             previousLrPos = lrWorldPos;
+            previousGlobalScale = rt.lossyScale;
             previousPositions = new Vector3[transforms.Length];
             for (int i = 0; i < transforms.Length; i++)
             {
@@ -91,7 +88,25 @@ namespace UnityEngine.UI.Extensions
                 }
                 previousPositions[i] = transforms[i].position;
             }
+        }
 
+        private void CalculateLinePoints()
+        {
+            Vector2[] points = new Vector2[transforms.Length];
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                if (transforms[i] == null)
+                {
+                    continue;
+                }
+                var offsetPos = rt.InverseTransformPoint(transforms[i].position);
+                points[i] = new Vector2(offsetPos.x, offsetPos.y);
+            }
+
+            // And assign the converted points to the line renderer
+            lr.Points = points;
+            lr.RelativeSize = false;
+            lr.drivenExternally = true;           
         }
     }
 }
