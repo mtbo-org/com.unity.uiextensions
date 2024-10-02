@@ -12,17 +12,13 @@ namespace UnityEngine.UI.Extensions
         // The elements between which line segments should be drawn
         public RectTransform[] transforms;
         private Vector3[] previousPositions;
-        private RectTransform canvas;
+        private Vector3 previousLrPos;
         private RectTransform rt;
         private UILineRenderer lr;
 
+
         private void Awake()
         {
-            var canvasParent = GetComponentInParent<RectTransform>().GetParentCanvas();
-            if (canvasParent != null)
-            {
-                canvas = canvasParent.GetComponent<RectTransform>();
-            }
             rt = GetComponent<RectTransform>();
             lr = GetComponent<UILineRenderer>();
         }
@@ -30,14 +26,26 @@ namespace UnityEngine.UI.Extensions
         // Update is called once per frame
         void Update()
         {
+            if (lr.RelativeSize)
+            {
+                Debug.LogWarning("While using UILineConnector, UILineRenderer should not use relative size, so that even if this RectTransform has a zero-size Rect, the positions of the points can still be calculated");
+                lr.RelativeSize = false;
+            }
+
             if (transforms == null || transforms.Length < 1)
             {
                 return;
             }
-            //Performance check to only redraw when the child transforms move
-            if (previousPositions != null && previousPositions.Length == transforms.Length)
+
+            // Get world position of UILineRenderer
+            Vector3 lrWorldPos = rt.position;
+
+            /*Performance check to only redraw when the child transforms move,
+            or the world position of UILineRenderer moves */
+            bool updateLine = lrWorldPos != previousLrPos;
+
+            if (!updateLine && previousPositions != null && previousPositions.Length == transforms.Length)
             {
-                bool updateLine = false;
                 for (int i = 0; i < transforms.Length; i++)
                 {
                     if (transforms[i] == null)
@@ -47,40 +55,24 @@ namespace UnityEngine.UI.Extensions
                     if (!updateLine && previousPositions[i] != transforms[i].position)
                     {
                         updateLine = true;
+                        break;
                     }
                 }
-                if (!updateLine) return;
-            }
+            }  
+            if (!updateLine) return;       
 
-            // Get the pivot points
-            Vector2 thisPivot = rt.pivot;
-            Vector2 canvasPivot = canvas.pivot;
 
-            // Set up some arrays of coordinates in various reference systems
-            Vector3[] worldSpaces = new Vector3[transforms.Length];
-            Vector3[] canvasSpaces = new Vector3[transforms.Length];
+            // Calculate delta from the local position
             Vector2[] points = new Vector2[transforms.Length];
-
-            // First, convert the pivot to worldspace
             for (int i = 0; i < transforms.Length; i++)
             {
                 if (transforms[i] == null)
                 {
                     continue;
                 }
-                worldSpaces[i] = transforms[i].TransformPoint(thisPivot);
-            }
 
-            // Then, convert to canvas space
-            for (int i = 0; i < transforms.Length; i++)
-            {
-                canvasSpaces[i] = canvas.InverseTransformPoint(worldSpaces[i]);
-            }
-
-            // Calculate delta from the canvas pivot point
-            for (int i = 0; i < transforms.Length; i++)
-            {
-                points[i] = new Vector2(canvasSpaces[i].x, canvasSpaces[i].y);
+                var offsetPos = rt.InverseTransformPoint(transforms[i].position);
+                points[i] = new Vector2(offsetPos.x, offsetPos.y);
             }
 
             // And assign the converted points to the line renderer
@@ -88,6 +80,8 @@ namespace UnityEngine.UI.Extensions
             lr.RelativeSize = false;
             lr.drivenExternally = true;
 
+            //save previous positions
+            previousLrPos = lrWorldPos;
             previousPositions = new Vector3[transforms.Length];
             for (int i = 0; i < transforms.Length; i++)
             {
@@ -97,6 +91,7 @@ namespace UnityEngine.UI.Extensions
                 }
                 previousPositions[i] = transforms[i].position;
             }
+
         }
     }
 }
