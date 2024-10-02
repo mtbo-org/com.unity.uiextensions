@@ -266,7 +266,10 @@ namespace UnityEngine.UI.Extensions
                 _displacedObjectLE.preferredWidth = _draggingObjectOriginalSize.x;
                 _displacedObjectLE.preferredHeight = _draggingObjectOriginalSize.y;
                 _displacedObject.SetParent(_reorderableList.Content, false);
-                _displacedObject.rotation = _reorderableList.transform.rotation;
+                if (!_reorderableList.KeepItemRotation)
+                {
+                    _displacedObject.rotation = _reorderableList.transform.rotation;
+                }
                 _displacedObject.SetSiblingIndex(_fromIndex);
                 // Force refreshing both lists because otherwise we get inappropriate FromList in ReorderableListEventStruct 
                 _reorderableList.Refresh();
@@ -310,7 +313,10 @@ namespace UnityEngine.UI.Extensions
             _displacedObjectLE.preferredWidth = _displacedObjectOriginalSize.x;
             _displacedObjectLE.preferredHeight = _displacedObjectOriginalSize.y;
             _displacedObject.SetParent(_displacedObjectOriginList.Content, false);
-            _displacedObject.rotation = _displacedObjectOriginList.transform.rotation;
+            if (!_reorderableList.KeepItemRotation)
+            {
+                _displacedObject.rotation = _displacedObjectOriginList.transform.rotation;
+            }
             _displacedObject.SetSiblingIndex(_displacedFromIndex);
             _displacedObject.gameObject.SetActive(true);
 
@@ -382,7 +388,10 @@ namespace UnityEngine.UI.Extensions
 
                     RefreshSizes();
                     _draggingObject.SetParent(_currentReorderableListRaycasted.Content, false);
-                    _draggingObject.rotation = _currentReorderableListRaycasted.transform.rotation;
+                    if (!_reorderableList.KeepItemRotation)
+                    {
+                        _draggingObject.rotation = _currentReorderableListRaycasted.transform.rotation;
+                    }
                     _draggingObject.SetSiblingIndex(_fakeElement.GetSiblingIndex());
 
                     //If the item is transferable, it can be dragged out again
@@ -474,7 +483,10 @@ namespace UnityEngine.UI.Extensions
             {
                 RefreshSizes();
                 _draggingObject.SetParent(_reorderableList.Content, false);
-                _draggingObject.rotation = _reorderableList.Content.transform.rotation;
+                if (!_reorderableList.KeepItemRotation)
+                {
+                    _draggingObject.rotation = _reorderableList.Content.transform.rotation;
+                }
                 _draggingObject.SetSiblingIndex(_fromIndex);
 
 
