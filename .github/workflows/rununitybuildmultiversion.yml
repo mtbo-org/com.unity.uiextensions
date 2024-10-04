@@ -63,27 +63,31 @@ jobs:
           - os: windows
             unityVersion: 2022.3
             build-target: WSAPlayer
-          - os: windows
-            unityVersion: 2023.1
+            - os: windows
+            unityVersion: 6000.0
             build-target: Android
-          - os: macOS
-            unityVersion: 2023.1
-            build-target: iOS
           - os: windows
-            unityVersion: 2023.1
+            unityVersion: 6000.0
             build-target: StandaloneWindows64
           - os: windows
-            unityVersion: 2023.1
-            build-target: WSAPlayer            
+            unityVersion: 6000.0
+            build-target: WSAPlayer
+          - os: macos
+            unityVersion: 6000.0
+            build-target: iOS
+          - os: macos
+            unityVersion: 6000.0
+            build-target: StandaloneOSX
+
     steps:
       - name: Script Version
         run: |
           echo "::group::Script Versioning"
-          $scriptVersion = "1.0.0"
+          $scriptVersion = "1.0.1"
           echo "Build Script Version: $scriptVersion"
           echo "::endgroup::"
         shell: pwsh     
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
           clean: true
@@ -91,8 +95,8 @@ jobs:
       - id: build
         name: 'Run Unity Builds'
         run: |
-          echo "::group::Set Hub and editor locations"
           $unityVersion = '${{ matrix.unityVersion }}'
+          $unityMajorVersion = $unityVersion.Substring(0, 4)
 
           echo "::group::Set Hub and editor locations"
 
@@ -100,43 +104,46 @@ jobs:
           if ( (-not $global:PSVersionTable.Platform) -or ($global:PSVersionTable.Platform -eq "Win32NT") )
           {
             $hubPath = "C:\Program Files\Unity Hub\Unity Hub.exe"
-            $editorRootPath = "C:\Program Files\Unity\Hub\Editor\"
-            $editorFileEx = "\Editor\Unity.exe"
-            $directorySeparatorChar = "\"
 
             #"Unity Hub.exe" -- --headless help
             #. 'C:\Program Files\Unity Hub\Unity Hub.exe' -- --headless help
             function unity-hub 
             {
+              & $hubPath -- --headless $args.Split(" ") | Out-String
+            }
+            function unity-hub-raw
+            {
               & $hubPath -- --headless $args.Split(" ") | Out-String -NoNewline
-            }            
+            }
           }
           elseif ( $global:PSVersionTable.OS.Contains("Darwin") ) 
           {
-            $hubPath = "/Applications/Unity Hub.app/Contents/macOS/Unity Hub"
-            $editorRootPath = "/Applications/Unity/Hub/Editor/"
-            $editorFileEx = "/Unity.app/Contents/macOS/Unity"
-            $directorySeparatorChar = "/"
+            $hubPath = "/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"
 
-            # /Applications/Unity\ Hub.app/Contents/macOS/Unity\ Hub -- --headless help
+            # /Applications/Unity\ Hub.app/Contents/MacOS/Unity\ Hub -- --headless help
             function unity-hub 
             {
+              & $hubPath -- --headless $args.Split(" ") | Out-String
+            }
+            function unity-hub-raw 
+            {
               & $hubPath -- --headless $args.Split(" ") | Out-String -NoNewline
-            }            
+            }
           }
           elseif ( $global:PSVersionTable.OS.Contains("Linux") ) 
           {
             $hubPath = "$HOME/Unity Hub/UnityHub.AppImage"
-            $editorRootPath = "$HOME/Unity/Hub/Editor/"
-            $editorFileEx = "/Editor/Unity"
-            $directorySeparatorChar = "/"
 
             # /UnityHub.AppImage --headless help
             # xvfb-run --auto-servernum "$HOME/Unity Hub/UnityHub.AppImage" --headless help
             function unity-hub 
             {
               xvfb-run --auto-servernum "$hubPath" --headless $args.Split(" ")
-            }            
+            }
+            function unity-hub-raw 
+            {
+              xvfb-run --auto-servernum "$hubPath" --headless $args.Split(" ")
+            }
           }
 
           echo "::endgroup::"
@@ -168,7 +175,7 @@ jobs:
           echo "Requested unity version is {$unityVersion}"
 
           $InstalledUnityVersions = unity-hub editors
-          $editorRootPath = unity-hub ip -g
+          $editorRootPath = unity-hub-raw ip -g
           echo "Installed unity versions are {$InstalledUnityVersions}"
           echo "Unity install path is {$editorRootPath}"
 
@@ -230,7 +237,7 @@ jobs:
           }
           elseif ( $global:PSVersionTable.OS.Contains("Darwin") ) {
             echo 'Building using Mac'
-            $editorFileEx = "/Unity.app/Contents/macOS/Unity"
+            $editorFileEx = "/Unity.app/Contents/MacOS/Unity"
             $editorrunpath = Join-Path $editorRootPath $unityVersion $editorFileEx
 
             function unity-editor {
@@ -267,7 +274,7 @@ jobs:
 
           echo "::endgroup::"
 
-          echo "::group::Setup logging and run Unit tests"          
+          echo "::group::Setup logging and run Unit tests"
 
           # Log detail
           $logDirectory = "Logs"          
@@ -283,14 +290,13 @@ jobs:
 
           # If run manually, the Refname is actually blank, so just use date
           if([string]::IsNullOrEmpty(${GITHUB_REF_NAME})) {
-            $logName = "$logDirectory$directorySeparatorChar$date"
-          }
-          else{          
-            $logName = "$logDirectory$directorySeparatorChar${GITHUB_REF_NAME}-$date"
+            $logName = Join-Path $logDirectory $date
+          }else {
+            $logName = Join-Path $logDirectory ${GITHUB_REF_NAME}-$date
           }
 
-          $logPath = "$logName.log"
-          $testsLogPath = "$logName-tests.xml"
+          $logPath = "$unityMajorVersion_${{ matrix.build-target }}_$logName.log"
+          $testsLogPath = "$unityMajorVersion_${{ matrix.build-target }}_$logName-tests.xml"
 
           echo "Logpath [$logPath]"
           echo "TestsPath [$testsLogPath]"
@@ -313,9 +319,20 @@ jobs:
 
           $TempUnityProjectName = 'P'
 
-          unity-editor '-createProject' $TempUnityProjectName -quit
+          unity-editor '-createProject' $TempUnityProjectName '-logFile' $logPath '-quit'
 
-          $destinationPath = $TempUnityProjectName + $directorySeparatorChar + 'packages'
+          if ( -not (Test-Path "$TempUnityProjectName") )
+          {
+            $ProjectPath = Get-Location
+            Write-Error "Editor failed to create project not Found $ProjectPath/$TempUnityProjectName"
+            exit 1
+          }
+          else {
+            $ProjectPath = Get-Location
+            echo "Editor project created at $ProjectPath/$TempUnityProjectName"
+          }
+
+          $destinationPath = Join-Path $TempUnityProjectName 'packages'
           Move-Item -Path $UPMFolderName -Destination $destinationPath
 
           echo "::endgroup::"
@@ -348,10 +365,9 @@ jobs:
             # Read dependancy input value
             $dependencies = '${{ inputs.dependencies }}'
 
-            if([string]::IsNullOrEmpty('${{ secrets.GIT_USER_NAME }}') -or [string]::IsNullOrEmpty('${{ secrets.GIT_PAT }}')){
+            if([string]::IsNullOrEmpty('${{ github.actor }}') -or [string]::IsNullOrEmpty('${{ secrets.GITHUB_TOKEN }}')){
               echo ""
-              echo "Secrets for GIT_USER_NAME or GIT_PAT missing, please register them with access to this runner"
-              echo "*Note, Organisation secrets are not accessible to Forked repos and need registering in the local fork"
+              echo "Insufficient credentials supplied to activate the workflow"
               exit 1
             }
 
@@ -362,7 +378,7 @@ jobs:
             echo $JSONdependencies
 
             # Read current Manifest json
-            $manifestPath = $destinationPath + $directorySeparatorChar + 'manifest.json'
+            $manifestPath = Join-Path $destinationPath 'manifest.json'
             $projectManifest = Get-Content -Path $manifestPath | ConvertFrom-Json
             $strArray = $projectManifest.dependencies.PsObject.Properties | ForEach-Object {"$($_.Name)@$($_.Value),"}
 
@@ -375,7 +391,7 @@ jobs:
                 $dependencyURL = $_.Value
                 echo "---------------------------------------------"
                 echo "Cloning dependency - Name [$dependencyName] - Path [$dependencyPath] - URL [$dependencyURL]"
-                $cloneURL = "https://${{ secrets.GIT_USER_NAME }}:${{ secrets.GIT_PAT }}@$dependencyURL"
+                $cloneURL = "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@$dependencyURL"
 
                 echo "cloning $dependencyName from $dependencyURL and moving to $destinationPath"
                 echo "git path - $cloneURL"
@@ -431,7 +447,7 @@ jobs:
 
           echo "::endgroup::"
 
-          echo "::group::Run build"              
+          echo "::group::Run build"
 
           echo "---------------------------------------------"
           echo "Start Testing"
@@ -461,11 +477,10 @@ jobs:
 
             exit $LASTEXITCODE
           }
-          echo "::endgroup::"
 
         shell: pwsh
       - uses: actions/upload-artifact@v3
         if: always()
         with:
-          name: unity-build-log
+          name: unity-build-log-${{ matrix.unityVersion }}-${{ matrix.build-target }}
           path: Logs/**

@@ -32,18 +32,17 @@ jobs:
       - name: Script Version
         run: |
           echo "::group::Script Versioning"
-          $scriptVersion = "1.0.0"
+          $scriptVersion = "1.0.1"
           echo "Build Script Version: $scriptVersion"
           echo "::endgroup::"
         shell: pwsh     
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
           clean: true
       - id: build
         name: 'Run Unity Builds'
         run: |
-          echo "::group::Set Hub and editor locations"
           $unityVersion = '${{ inputs.unityVersion }}'
 
           echo "::group::Set Hub and editor locations"
@@ -53,8 +52,6 @@ jobs:
           {
             $hubPath = "C:\Program Files\Unity Hub\Unity Hub.exe"
             $editorRootPath = "C:\Program Files\Unity\Hub\Editor\"
-            $editorFileEx = "\Editor\Unity.exe"
-            $directorySeparatorChar = "\"
 
             #"Unity Hub.exe" -- --headless help
             #. 'C:\Program Files\Unity Hub\Unity Hub.exe' -- --headless help
@@ -67,8 +64,6 @@ jobs:
           {
             $hubPath = "/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"
             $editorRootPath = "/Applications/Unity/Hub/Editor/"
-            $editorFileEx = "/Unity.app/Contents/MacOS/Unity"
-            $directorySeparatorChar = "/"
 
             # /Applications/Unity\ Hub.app/Contents/MacOS/Unity\ Hub -- --headless help
             function unity-hub 
@@ -80,8 +75,6 @@ jobs:
           {
             $hubPath = "$HOME/Unity Hub/UnityHub.AppImage"
             $editorRootPath = "$HOME/Unity/Hub/Editor/"
-            $editorFileEx = "/Editor/Unity"
-            $directorySeparatorChar = "/"
 
             # /UnityHub.AppImage --headless help
             # xvfb-run --auto-servernum "$HOME/Unity Hub/UnityHub.AppImage" --headless help
@@ -235,10 +228,9 @@ jobs:
 
           # If run manually, the Refname is actually blank, so just use date
           if([string]::IsNullOrEmpty(${GITHUB_REF_NAME})) {
-            $logName = "$logDirectory$directorySeparatorChar$date"
-          }
-          else{          
-            $logName = "$logDirectory$directorySeparatorChar${GITHUB_REF_NAME}-$date"
+            $logName = Join-Path $logDirectory $date
+          }else {          
+            $logName = Join-Path $logDirectory ${GITHUB_REF_NAME}-$date
           }
 
           $logPath = "$logName.log"
@@ -265,9 +257,20 @@ jobs:
 
           $TempUnityProjectName = 'P'
 
-          unity-editor '-createProject' $TempUnityProjectName -quit
+          unity-editor '-createProject' $TempUnityProjectName '-logFile' $logPath '-quit'
 
-          $destinationPath = $TempUnityProjectName + $directorySeparatorChar + 'packages'
+          if ( -not (Test-Path "$TempUnityProjectName") )
+          {
+            $ProjectPath = Get-Location
+            Write-Error "Editor failed to create project not Found $ProjectPath/$TempUnityProjectName"
+            exit 1
+          }
+          else {
+            $ProjectPath = Get-Location
+            echo "Editor project created at $ProjectPath/$TempUnityProjectName"
+          }
+
+          $destinationPath = Join-Path $TempUnityProjectName 'packages'
           Move-Item -Path $UPMFolderName -Destination $destinationPath
 
           echo "::endgroup::"
@@ -300,10 +303,9 @@ jobs:
             # Read dependancy input value
             $dependencies = '${{ inputs.dependencies }}'
 
-            if([string]::IsNullOrEmpty('${{ secrets.GIT_USER_NAME }}') -or [string]::IsNullOrEmpty('${{ secrets.GIT_PAT }}')){
+            if([string]::IsNullOrEmpty('${{ github.actor }}') -or [string]::IsNullOrEmpty('${{ secrets.GITHUB_TOKEN }}')){
               echo ""
-              echo "Secrets for GIT_USER_NAME or GIT_PAT missing, please register them with access to this runner"
-              echo "*Note, Organisation secrets are not accessible to Forked repos and need registering in the local fork"
+              echo "Insufficient credentials supplied to activate the workflow"
               exit 1
             }
 
@@ -314,7 +316,7 @@ jobs:
             echo $JSONdependencies
 
             # Read current Manifest json
-            $manifestPath = $destinationPath + $directorySeparatorChar + 'manifest.json'
+            $manifestPath = Join-Path $destinationPath 'manifest.json'
             $projectManifest = Get-Content -Path $manifestPath | ConvertFrom-Json
             $strArray = $projectManifest.dependencies.PsObject.Properties | ForEach-Object {"$($_.Name)@$($_.Value),"}
 
@@ -327,7 +329,7 @@ jobs:
                 $dependencyURL = $_.Value
                 echo "---------------------------------------------"
                 echo "Cloning dependency - Name [$dependencyName] - Path [$dependencyPath] - URL [$dependencyURL]"
-                $cloneURL = "https://${{ secrets.GIT_USER_NAME }}:${{ secrets.GIT_PAT }}@$dependencyURL"
+                $cloneURL = "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@$dependencyURL"
 
                 echo "cloning $dependencyName from $dependencyURL and moving to $destinationPath"
                 echo "git path - $cloneURL"
@@ -413,11 +415,10 @@ jobs:
 
             exit $LASTEXITCODE
           }
-          echo "::endgroup::"
 
         shell: pwsh
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: unity-build-log
-          path: Logs/**
+          name: unity-build-log-${{ matrix.build-target }}
+          path: Logs/**        
