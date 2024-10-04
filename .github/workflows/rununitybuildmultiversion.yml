@@ -63,7 +63,7 @@ jobs:
           - os: windows
             unityVersion: 2022.3
             build-target: WSAPlayer
-            - os: windows
+          - os: windows
             unityVersion: 6000.0
             build-target: Android
           - os: windows
